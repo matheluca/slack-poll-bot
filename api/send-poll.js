@@ -6,7 +6,7 @@ const redis = new Redis({
 });
 
 export default async function handler(req, res) {
-  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
+  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade?";
   const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
 
   const response = await fetch("https://slack.com/api/chat.postMessage", {
