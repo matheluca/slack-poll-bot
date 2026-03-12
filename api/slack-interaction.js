@@ -1,11 +1,16 @@
 import { createClient } from "redis";
 
 export default async function handler(req, res) {
+  // Responde imediatamente pro Slack (evita timeout)
+  res.status(200).send("");
+
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
+  const userName = payload.user.name;
   const action = payload.actions[0];
   const vote = action.value;
   const ts = payload.message.ts;
+  const channelId = payload.channel.id;
 
   const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
   await client.connect();
@@ -15,26 +20,6 @@ export default async function handler(req, res) {
 
   // Bloqueia voto duplicado
   if (poll.votes[userId]) {
-    await client.disconnect();
-    return res.status(200).json({
-      response_type: "ephemeral",
-      text: "⚠️ Você já votou!"
-    });
-  }
-
-  // Registra voto
-  poll.votes[userId] = vote;
-  await client.set(`poll:${ts}`, JSON.stringify(poll));
-
-  const totalVotes = Object.keys(poll.votes).length;
-
-  // Se todos votaram, exibe resultado
-  if (totalVotes >= poll.total_members) {
-    const summary = poll.options.map((opt) => {
-      const count = Object.values(poll.votes).filter((v) => v === opt).length;
-      return `${opt}: ${count} voto(s)`;
-    }).join("\n");
-
     await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
@@ -42,16 +27,32 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
       },
       body: JSON.stringify({
-        channel: process.env.SLACK_CHANNEL_ID,
-        text: `*Resultado da enquete:*\n${summary}`,
+        channel: channelId,
+        thread_ts: ts,
+        text: `⚠️ <@${userId}> você já votou!`,
       }),
     });
+    await client.disconnect();
+    return;
   }
 
-  await client.disconnect();
+  // Registra voto
+  poll.votes[userId] = vote;
+  await client.set(`poll:${ts}`, JSON.stringify(poll));
 
-  return res.status(200).json({
-    response_type: "ephemeral",
-    text: "✅ Voto registrado!"
+  // Responde na thread
+  await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+    },
+    body: JSON.stringify({
+      channel: channelId,
+      thread_ts: ts,
+      text: `<@${userId}> respondeu *${vote}*`,
+    }),
   });
+
+  await client.disconnect();
 }
