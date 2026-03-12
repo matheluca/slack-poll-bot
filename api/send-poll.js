@@ -13,8 +13,8 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  const question = "Como está seu humor hoje?";
-  const options = ["😄 Ótimo", "😐 Ok", "😞 Ruim"];
+  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
+  const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
 
   const response = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
