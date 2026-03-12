@@ -2,6 +2,6 @@
   "name": "slack-poll-bot",
   "version": "1.0.0",
   "dependencies": {
-    "firebase-admin": "^12.0.0"
+    "@upstash/redis": "^1.28.0"
   }
 }
