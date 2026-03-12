@@ -1,7 +1,7 @@
 import { createClient } from "redis";
 
 export default async function handler(req, res) {
-  const client = createClient({ url: process.env.STORAGE_URL });
+const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
   await client.connect();
 
   const question = "Como está seu humor hoje?";
