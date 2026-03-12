@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   const vote = action.value;
   const ts = payload.message.ts;
 
-  const client = createClient({ url: process.env.STORAGE_URL });
+const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
   await client.connect();
 
   const raw = await client.get(`poll:${ts}`);
