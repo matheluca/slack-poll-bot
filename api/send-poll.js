@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const CHANNELS = ["C0ALDQ09TPW"];
+const CHANNELS = ["C0ALDQ09TPW", "C06BR6JNTD5", "C06C63PCX6W", "C06C3C1RGQ5"];
 const ALLOWED_HOURS_BRT = [10, 14, 17]; // horários de Brasília
 
 export default async function handler(req, res) {
