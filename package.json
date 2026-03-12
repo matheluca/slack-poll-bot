@@ -1,7 +1,7 @@
-{
+\{
   "name": "slack-poll-bot",
   "version": "1.0.0",
   "dependencies": {
-    "redis": "^4.6.0"
+    "firebase-admin": "^12.0.0"
   }
 }
