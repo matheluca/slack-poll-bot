@@ -1,6 +1,9 @@
-import { kv } from "@vercel/kv";
+import { createClient } from "redis";
 
 export default async function handler(req, res) {
+  const client = createClient({ url: process.env.STORAGE_URL });
+  await client.connect();
+
   const question = "Como está seu humor hoje?";
   const options = ["😄 Ótimo", "😐 Ok", "😞 Ruim"];
 
@@ -33,8 +36,8 @@ export default async function handler(req, res) {
   const data = await response.json();
   const ts = data.ts;
 
-  // Inicializa os votos no KV
-  await kv.set(`poll:${ts}`, { question, options, votes: {}, total_members: 10 });
+  await client.set(`poll:${ts}`, JSON.stringify({ question, options, votes: {}, total_members: 10 }));
+  await client.disconnect();
 
   res.status(200).json({ ok: true, ts });
 }
