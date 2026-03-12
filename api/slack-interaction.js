@@ -1,3 +1,23 @@
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+export const config = {
+  api: { bodyParser: false },
+};
+
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
 export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
   const params = new URLSearchParams(rawBody);
@@ -9,8 +29,6 @@ export default async function handler(req, res) {
   const ts = payload.message.ts;
   const channelId = payload.channel.id;
   const responseUrl = payload.response_url;
-
-  // REMOVIDO daqui o res.status(200).end()
 
   try {
     const poll = await redis.get(`poll:${ts}`);
@@ -49,7 +67,7 @@ export default async function handler(req, res) {
       }),
     });
 
-    res.status(200).end(); // <-- agora aqui, depois de tudo
+    res.status(200).end();
   } catch (err) {
     console.error(err);
     res.status(200).end();
