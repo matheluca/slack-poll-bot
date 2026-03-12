@@ -15,9 +15,9 @@ export default async function handler(req, res) {
   const dayOfWeek = now.getUTCDay(); // 0=dom, 6=sab
 
   // só dispara em dias úteis e nos horários certos
-  if (dayOfWeek === 0 || dayOfWeek === 6 || !ALLOWED_HOURS_BRT.includes(hourBRT)) {
-    return res.status(200).json({ ok: false, reason: "fora do horário" });
-  }
+    //if (dayOfWeek === 0 || dayOfWeek === 6 || !ALLOWED_HOURS_BRT.includes(hourBRT)) {
+    //  return res.status(200).json({ ok: false, reason: "fora do horário" });
+   // }
 
   const question = "Você já atualizou as OPs do seu funil para evitar irregularidade?";
   const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
