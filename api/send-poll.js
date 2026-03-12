@@ -1,9 +1,18 @@
-import { createClient } from "redis";
+import admin from "firebase-admin";
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+  });
+}
+
+const db = admin.firestore();
 
 export default async function handler(req, res) {
-const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
-  await client.connect();
-
   const question = "Como está seu humor hoje?";
   const options = ["😄 Ótimo", "😐 Ok", "😞 Ruim"];
 
@@ -36,8 +45,12 @@ const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxP
   const data = await response.json();
   const ts = data.ts;
 
-  await client.set(`poll:${ts}`, JSON.stringify({ question, options, votes: {}, total_members: 10 }));
-  await client.disconnect();
+  await db.collection("polls").doc(ts).set({
+    question,
+    options,
+    votes: {},
+    createdAt: new Date().toISOString(),
+  });
 
   res.status(200).json({ ok: true, ts });
 }
