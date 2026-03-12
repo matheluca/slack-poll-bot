@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const CHANNELS = ["C03DDF95GUB", "C0ALDQ09TPW"];
+const CHANNELS = ["C0ALDQ09TPW"];
 
 export default async function handler(req, res) {
   const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
