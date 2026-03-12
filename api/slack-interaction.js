@@ -1,9 +1,18 @@
-import { createClient } from "redis";
+import admin from "firebase-admin";
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    }),
+  });
+}
+
+const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // Responde imediatamente pro Slack (evita timeout)
-  res.status(200).send("");
-
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
   const userName = payload.user.name;
@@ -12,47 +21,26 @@ export default async function handler(req, res) {
   const ts = payload.message.ts;
   const channelId = payload.channel.id;
 
-  const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
-  await client.connect();
+  // Responde pro Slack imediatamente
+  res.status(200).json({ ok: true });
 
-  const raw = await client.get(`poll:${ts}`);
-  const poll = JSON.parse(raw);
+  try {
+    const docRef = db.collection("polls").doc(ts);
+    const doc = await docRef.get();
 
-  // Bloqueia voto duplicado
-  if (poll.votes[userId]) {
-    await fetch("https://slack.com/api/chat.postMessage", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-      },
-      body: JSON.stringify({
-        channel: channelId,
-        thread_ts: ts,
-        text: `⚠️ <@${userId}> você já votou!`,
-      }),
-    });
-    await client.disconnect();
-    return;
-  }
+    if (!doc.exists) return;
 
-  // Registra voto
-  poll.votes[userId] = vote;
-  await client.set(`poll:${ts}`, JSON.stringify(poll));
+    const poll = doc.data();
 
-  // Responde na thread
-  await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-    },
-    body: JSON.stringify({
-      channel: channelId,
-      thread_ts: ts,
-      text: `<@${userId}> respondeu *${vote}*`,
-    }),
-  });
-
-  await client.disconnect();
-}
+    // Bloqueia voto duplicado
+    if (poll.votes[userId]) {
+      await fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+        },
+        body: JSON.stringify({
+          channel: channelId,
+          thread_ts: ts,
+          text: `⚠️ <@${u
