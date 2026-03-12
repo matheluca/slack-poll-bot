@@ -6,9 +6,20 @@ const redis = new Redis({
 });
 
 const CHANNELS = ["C0ALDQ09TPW"];
+const ALLOWED_HOURS_BRT = [10, 14, 17]; // horários de Brasília
 
 export default async function handler(req, res) {
-  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
+  const now = new Date();
+  const hourUTC = now.getUTCHours();
+  const hourBRT = (hourUTC - 3 + 24) % 24;
+  const dayOfWeek = now.getUTCDay(); // 0=dom, 6=sab
+
+  // só dispara em dias úteis e nos horários certos
+  if (dayOfWeek === 0 || dayOfWeek === 6 || !ALLOWED_HOURS_BRT.includes(hourBRT)) {
+    return res.status(200).json({ ok: false, reason: "fora do horário" });
+  }
+
+  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade?";
   const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
 
   for (const channel of CHANNELS) {
@@ -40,7 +51,6 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     const ts = data.ts;
-
     await redis.set(`poll:${ts}`, { question, options, votes: {} });
   }
 
