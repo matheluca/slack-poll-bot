@@ -1,24 +1,12 @@
-import admin from "firebase-admin";
+import { Redis } from "@upstash/redis";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    }),
-  });
-}
-
-const db = admin.firestore();
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 export default async function handler(req, res) {
   const payload = JSON.parse(req.body.payload);
-
-  console.log("USER ID:", payload.user.id);
-  console.log("USER NAME:", payload.user.name);
-  console.log("USER USERNAME:", payload.user.username);
-
   const userId = payload.user.id;
   const action = payload.actions[0];
   const vote = action.value;
@@ -29,12 +17,9 @@ export default async function handler(req, res) {
   res.status(200).end();
 
   try {
-    const docRef = db.collection("polls").doc(ts);
-    const doc = await docRef.get();
+    const poll = await redis.get(`poll:${ts}`);
 
-    if (!doc.exists) return;
-
-    const poll = doc.data();
+    if (!poll) return;
 
     if (poll.votes && poll.votes[userId]) {
       await fetch(responseUrl, {
@@ -49,9 +34,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    await docRef.update({
-      [`votes.${userId}`]: vote,
-    });
+    poll.votes[userId] = vote;
+    await redis.set(`poll:${ts}`, poll);
 
     await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
