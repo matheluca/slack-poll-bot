@@ -46,5 +46,8 @@ const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxP
   }
 
   await client.disconnect();
-  res.status(200).json({ ok: true });
+res.status(200).json({
+  response_type: "ephemeral",
+  text: "✅ Voto registrado!"
+});
 }
