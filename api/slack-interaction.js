@@ -15,14 +15,14 @@ const db = admin.firestore();
 export default async function handler(req, res) {
   const payload = JSON.parse(req.body.payload);
   const userId = payload.user.id;
-  const userName = payload.user.name;
   const action = payload.actions[0];
   const vote = action.value;
   const ts = payload.message.ts;
   const channelId = payload.channel.id;
+  const responseUrl = payload.response_url;
 
-  // Responde pro Slack imediatamente
-  res.status(200).json({ ok: true });
+  // Responde pro Slack ANTES de tudo
+  res.status(200).end();
 
   try {
     const docRef = db.collection("polls").doc(ts);
@@ -32,29 +32,23 @@ export default async function handler(req, res) {
 
     const poll = doc.data();
 
-    // Bloqueia voto duplicado
-    if (poll.votes[userId]) {
-      await fetch("https://slack.com/api/chat.postMessage", {
+    if (poll.votes && poll.votes[userId]) {
+      await fetch(responseUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channel: channelId,
-          thread_ts: ts,
-          text: `⚠️ <@${userId}> você já votou!`,
+          response_type: "ephemeral",
+          replace_original: false,
+          text: "⚠️ Você já votou!",
         }),
       });
       return;
     }
 
-    // Registra voto
     await docRef.update({
       [`votes.${userId}`]: vote,
     });
 
-    // Responde na thread
     await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
