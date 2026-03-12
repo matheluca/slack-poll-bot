@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   const vote = action.value;
   const ts = payload.message.ts;
 
-const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
+  const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxPemSi@redis-17590.crce196.sa-east-1-2.ec2.cloud.redislabs.com:17590" });
   await client.connect();
 
   const raw = await client.get(`poll:${ts}`);
@@ -16,7 +16,10 @@ const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxP
   // Bloqueia voto duplicado
   if (poll.votes[userId]) {
     await client.disconnect();
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({
+      response_type: "ephemeral",
+      text: "⚠️ Você já votou!"
+    });
   }
 
   // Registra voto
@@ -46,8 +49,9 @@ const client = createClient({ url: "redis://default:OF9LXSzxVX7kWCXhKezSuLJ5cqxP
   }
 
   await client.disconnect();
-res.status(200).json({
-  response_type: "ephemeral",
-  text: "✅ Voto registrado!"
-});
+
+  return res.status(200).json({
+    response_type: "ephemeral",
+    text: "✅ Voto registrado!"
+  });
 }
