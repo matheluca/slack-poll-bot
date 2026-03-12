@@ -1,16 +1,9 @@
-import admin from "firebase-admin";
+import { Redis } from "@upstash/redis";
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    }),
-  });
-}
-
-const db = admin.firestore();
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 export default async function handler(req, res) {
   const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
@@ -45,12 +38,7 @@ export default async function handler(req, res) {
   const data = await response.json();
   const ts = data.ts;
 
-  await db.collection("polls").doc(ts).set({
-    question,
-    options,
-    votes: {},
-    createdAt: new Date().toISOString(),
-  });
+  await redis.set(`poll:${ts}`, { question, options, votes: {} });
 
   res.status(200).json({ ok: true, ts });
 }
