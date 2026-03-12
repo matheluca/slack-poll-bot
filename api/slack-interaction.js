@@ -14,6 +14,11 @@ const db = admin.firestore();
 
 export default async function handler(req, res) {
   const payload = JSON.parse(req.body.payload);
+
+  console.log("USER ID:", payload.user.id);
+  console.log("USER NAME:", payload.user.name);
+  console.log("USER USERNAME:", payload.user.username);
+
   const userId = payload.user.id;
   const action = payload.actions[0];
   const vote = action.value;
@@ -21,7 +26,6 @@ export default async function handler(req, res) {
   const channelId = payload.channel.id;
   const responseUrl = payload.response_url;
 
-  // Responde pro Slack ANTES de tudo
   res.status(200).end();
 
   try {
