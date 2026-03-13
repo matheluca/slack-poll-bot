@@ -13,6 +13,7 @@ const CHANNEL_OPTIONS = [
   { label: "C3 - Connect", id: "C06C3C1RGQ5" },
   { label: "Todos os grupos separados", id: "mix" },
   { label: "Geral", id: "C03D68VC2GK" },
+  { label: "teste", id: "C0ALDQ09TPW" },
 ];
 
 const conversations = {};
