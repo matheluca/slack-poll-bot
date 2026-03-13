@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         blocks: [
           {
             type: "section",
-            text: { type: "mrkdwn", text: `*${question}*` },
+            text: { type: "mrkdwn", text: `<!channel> *${question}*` },
           },
           {
             type: "actions",
