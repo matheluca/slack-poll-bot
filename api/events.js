@@ -5,14 +5,13 @@ const AUTHORIZED_USERS = [
   "U03CM7A8ZCP",
 ];
 
-const CHANNELS = ["C03DDF95GUB", "C0ALDQ09TPW"];
+const CHANNELS = ["C0ALDQ09TPW"];
 
 const conversations = {};
 
 export default async function handler(req, res) {
   const body = req.body;
 
-  // Verificação do Slack
   if (body.type === "url_verification") {
     return res.status(200).json({ challenge: body.challenge });
   }
@@ -26,21 +25,21 @@ export default async function handler(req, res) {
   const text = event.text?.trim();
   const dmChannel = event.channel;
 
-  if (!AUTHORIZED_USERS.includes(userId)) {
-    await sendDM(dmChannel, "⛔ Você não tem permissão para usar este comando.");
-    return;
-  }
+  console.log("EVENT USER:", userId);
+  console.log("EVENT CHANNEL:", dmChannel);
+  console.log("EVENT TEXT:", text);
+
+  if (!AUTHORIZED_USERS.includes(userId)) return;
 
   const state = conversations[userId] || { step: "idle" };
+  console.log("STATE:", JSON.stringify(state));
 
-  // PASSO 1 — usuário manda a pergunta
   if (state.step === "idle") {
     conversations[userId] = { step: "ask_type", question: text };
     await sendDM(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
     return;
   }
 
-  // PASSO 2 — usuário escolhe o tipo
   if (state.step === "ask_type") {
     if (text.toLowerCase() === "simples") {
       await publishToChannels(state.question, null);
@@ -48,29 +47,26 @@ export default async function handler(req, res) {
       conversations[userId] = { step: "idle" };
       return;
     }
-
     if (text.toLowerCase() === "botões" || text.toLowerCase() === "botoes") {
       conversations[userId] = { ...state, step: "ask_options" };
       await sendDM(dmChannel, "Mande as opções separadas por vírgula.\nEx: 😄 Sim, 😐 Não, 😞 Talvez");
       return;
     }
-
     await sendDM(dmChannel, "Por favor responda *botões* ou *simples*.");
     return;
   }
 
-  // PASSO 3 — usuário manda as opções
   if (state.step === "ask_options") {
     const options = text.split(",").map((o) => o.trim());
     await publishToChannels(state.question, options);
     await sendDM(dmChannel, "✅ Enquete enviada para os canais!");
     conversations[userId] = { step: "idle" };
     return;
-}
+  }
 }
 
 async function sendDM(channel, text) {
-  await fetch("https://slack.com/api/chat.postMessage", {
+  const response = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -78,6 +74,8 @@ async function sendDM(channel, text) {
     },
     body: JSON.stringify({ channel, text }),
   });
+  const data = await response.json();
+  console.log("SEND DM RESPONSE:", JSON.stringify(data));
 }
 
 async function publishToChannels(question, options) {
@@ -119,6 +117,7 @@ async function publishToChannels(question, options) {
     });
 
     const data = await response.json();
+    console.log("PUBLISH RESPONSE:", JSON.stringify(data));
 
     if (options && data.ts) {
       await redis.set(`poll:${data.ts}`, { question, options, votes: {} });
