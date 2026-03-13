@@ -1,10 +1,3 @@
-import { Redis } from "@upstash/redis";
-
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
-
 const AUTHORIZED_USERS = [
   "U03DBNN8AMP",
   "U04AANJD124",
@@ -20,8 +13,10 @@ const CHANNEL_OPTIONS = [
   { label: "C3 - Connect", id: "C06C3C1RGQ5" },
   { label: "Todos os grupos separados", id: "mix" },
   { label: "Geral", id: "C03D68VC2GK" },
-  { label: "teste", id: "C0ALDQ09TPW" },
+  { label: "Teste", id: "C0ALDQ09TPW" },
 ];
+
+const conversations = {};
 
 export const config = {
   maxDuration: 30,
@@ -47,11 +42,11 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const state = (await redis.get(`conv:${userId}`)) || { step: "idle" };
+  const state = conversations[userId] || { step: "idle" };
 
   // PASSO 1 — recebe a pergunta
   if (state.step === "idle") {
-    await redis.set(`conv:${userId}`, { step: "ask_channel", question: text });
+    conversations[userId] = { step: "ask_channel", question: text };
     const optionsList = CHANNEL_OPTIONS.map((c, i) => `*${i + 1}*. ${c.label}`).join("\n");
     await sendDM(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nPara qual canal deseja enviar?\n${optionsList}\n\nResponda com o número.`);
     return res.status(200).end();
@@ -66,7 +61,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
     const selected = CHANNEL_OPTIONS[index];
-    await redis.set(`conv:${userId}`, { ...state, step: "ask_type", channelOption: selected });
+    conversations[userId] = { ...state, step: "ask_type", channelOption: selected };
     await sendDM(dmChannel, `Canal selecionado: *${selected.label}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
     return res.status(200).end();
   }
@@ -74,14 +69,14 @@ export default async function handler(req, res) {
   // PASSO 3 — escolhe o tipo
   if (state.step === "ask_type") {
     if (text.toLowerCase() === "simples") {
-      await publish(state.question, null, state.channelOption);
+      await publish(state.question, null, state.channelOption, dmChannel);
       await sendDM(dmChannel, "✅ Mensagem enviada!");
-      await redis.del(`conv:${userId}`);
+      conversations[userId] = { step: "idle" };
       return res.status(200).end();
     }
     if (text.toLowerCase() === "botões" || text.toLowerCase() === "botoes") {
-      await redis.set(`conv:${userId}`, { ...state, step: "ask_options" });
-      await sendDM(dmChannel, "Mande as opções separadas por *;*\nEx: 😄 Sim!; 😐 Ainda não!; 😞 Esqueci");
+      conversations[userId] = { ...state, step: "ask_options" };
+      await sendDM(dmChannel, "Mande as opções separadas por vírgula.\nEx: 😄 Sim, 😐 Não, 😞 Talvez");
       return res.status(200).end();
     }
     await sendDM(dmChannel, "Por favor responda *botões* ou *simples*.");
@@ -90,17 +85,24 @@ export default async function handler(req, res) {
 
   // PASSO 4 — recebe as opções
   if (state.step === "ask_options") {
-    const options = text.split(";").map((o) => o.trim());
-    await publish(state.question, options, state.channelOption);
+    const options = text.split(",").map((o) => o.trim());
+    await publish(state.question, options, state.channelOption, dmChannel);
     await sendDM(dmChannel, "✅ Enquete enviada!");
-    await redis.del(`conv:${userId}`);
+    conversations[userId] = { step: "idle" };
     return res.status(200).end();
   }
 
   return res.status(200).end();
 }
 
-async function publish(question, options, channelOption) {
+async function publish(question, options, channelOption, dmChannel) {
+  const { Redis } = await import("@upstash/redis");
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+
+  // Define os canais de destino
   let targetChannels = [];
   if (channelOption.id === "mix") {
     targetChannels = ["C06BR6JNTD5", "C06C63PCX6W", "C06C3C1RGQ5"];
@@ -108,16 +110,22 @@ async function publish(question, options, channelOption) {
     targetChannels = [channelOption.id];
   }
 
+  // Sempre inclui o canal de teste
   const allChannels = [...new Set([CHANNEL_TEST, ...targetChannels])];
 
   for (const channel of allChannels) {
+    // Descobre o nome do canal para mencionar
+    const channelName = CHANNEL_OPTIONS.find(c => c.id === channel)?.label || "canal";
     const messageText = `<!here> *${question}*`;
 
     const body = options
       ? {
           channel,
           blocks: [
-            { type: "section", text: { type: "mrkdwn", text: messageText } },
+            {
+              type: "section",
+              text: { type: "mrkdwn", text: messageText },
+            },
             {
               type: "actions",
               elements: options.map((opt) => ({
