@@ -9,6 +9,10 @@ const CHANNELS = ["C0ALDQ09TPW"];
 
 const conversations = {};
 
+export const config = {
+  maxDuration: 30,
+};
+
 export default async function handler(req, res) {
   const body = req.body;
 
@@ -16,28 +20,25 @@ export default async function handler(req, res) {
     return res.status(200).json({ challenge: body.challenge });
   }
 
-  res.status(200).end();
-
   const event = body.event;
-  if (!event || event.type !== "message" || event.bot_id || event.subtype) return;
+  if (!event || event.type !== "message" || event.bot_id || event.subtype) {
+    return res.status(200).end();
+  }
 
   const userId = event.user;
   const text = event.text?.trim();
   const dmChannel = event.channel;
 
-  console.log("EVENT USER:", userId);
-  console.log("EVENT CHANNEL:", dmChannel);
-  console.log("EVENT TEXT:", text);
-
-  if (!AUTHORIZED_USERS.includes(userId)) return;
+  if (!AUTHORIZED_USERS.includes(userId)) {
+    return res.status(200).end();
+  }
 
   const state = conversations[userId] || { step: "idle" };
-  console.log("STATE:", JSON.stringify(state));
 
   if (state.step === "idle") {
     conversations[userId] = { step: "ask_type", question: text };
     await sendDM(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
-    return;
+    return res.status(200).end();
   }
 
   if (state.step === "ask_type") {
@@ -45,15 +46,15 @@ export default async function handler(req, res) {
       await publishToChannels(state.question, null);
       await sendDM(dmChannel, "✅ Mensagem enviada para os canais!");
       conversations[userId] = { step: "idle" };
-      return;
+      return res.status(200).end();
     }
     if (text.toLowerCase() === "botões" || text.toLowerCase() === "botoes") {
       conversations[userId] = { ...state, step: "ask_options" };
       await sendDM(dmChannel, "Mande as opções separadas por vírgula.\nEx: 😄 Sim, 😐 Não, 😞 Talvez");
-      return;
+      return res.status(200).end();
     }
     await sendDM(dmChannel, "Por favor responda *botões* ou *simples*.");
-    return;
+    return res.status(200).end();
   }
 
   if (state.step === "ask_options") {
@@ -61,8 +62,10 @@ export default async function handler(req, res) {
     await publishToChannels(state.question, options);
     await sendDM(dmChannel, "✅ Enquete enviada para os canais!");
     conversations[userId] = { step: "idle" };
-    return;
+    return res.status(200).end();
   }
+
+  return res.status(200).end();
 }
 
 async function sendDM(channel, text) {
@@ -76,6 +79,7 @@ async function sendDM(channel, text) {
   });
   const data = await response.json();
   console.log("SEND DM RESPONSE:", JSON.stringify(data));
+  return data;
 }
 
 async function publishToChannels(question, options) {
