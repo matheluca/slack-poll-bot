@@ -5,8 +5,24 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+export const config = {
+  api: { bodyParser: false },
+};
+
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
+  });
+}
+
 export default async function handler(req, res) {
-  const payload = JSON.parse(req.body.payload);
+  const rawBody = await getRawBody(req);
+  const params = new URLSearchParams(rawBody);
+  const payload = JSON.parse(params.get("payload"));
+
   const userId = payload.user.id;
   const action = payload.actions[0];
   const vote = action.value;
@@ -18,7 +34,6 @@ export default async function handler(req, res) {
 
   try {
     const poll = await redis.get(`poll:${ts}`);
-
     if (!poll) return;
 
     if (poll.votes && poll.votes[userId]) {
@@ -49,7 +64,6 @@ export default async function handler(req, res) {
         text: `<@${userId}> respondeu *${vote}*`,
       }),
     });
-
   } catch (err) {
     console.error(err);
   }
