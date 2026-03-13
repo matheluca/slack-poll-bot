@@ -22,7 +22,6 @@ export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
   const params = new URLSearchParams(rawBody);
   const payload = JSON.parse(params.get("payload"));
-
   const userId = payload.user.id;
   const action = payload.actions[0];
   const vote = action.value;
@@ -34,7 +33,11 @@ export default async function handler(req, res) {
 
   try {
     const poll = await redis.get(`poll:${ts}`);
-    if (!poll) return;
+
+    if (!poll) {
+      console.log("POLL NOT FOUND para ts:", ts);
+      return;
+    }
 
     if (poll.votes && poll.votes[userId]) {
       await fetch(responseUrl, {
@@ -52,7 +55,7 @@ export default async function handler(req, res) {
     poll.votes[userId] = vote;
     await redis.set(`poll:${ts}`, poll);
 
-    await fetch("https://slack.com/api/chat.postMessage", {
+    const slackRes = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -64,7 +67,11 @@ export default async function handler(req, res) {
         text: `<@${userId}> respondeu *${vote}*`,
       }),
     });
+
+    const slackData = await slackRes.json();
+    console.log("SLACK RESPONSE:", JSON.stringify(slackData));
+
   } catch (err) {
-    console.error(err);
+    console.error("ERRO:", err);
   }
 }
