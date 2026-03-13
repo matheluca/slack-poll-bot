@@ -5,44 +5,52 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const CHANNELS = ["C03DDF95GUB", "C0ALDQ09TPW"];
-
 export default async function handler(req, res) {
-  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade";
-  const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
+  const payload = JSON.parse(req.body.payload);
+  const userId = payload.user.id;
+  const action = payload.actions[0];
+  const vote = action.value;
+  const ts = payload.message.ts;
+  const channelId = payload.channel.id;
+  const responseUrl = payload.response_url;
 
-  for (const channel of CHANNELS) {
-    const response = await fetch("https://slack.com/api/chat.postMessage", {
+  res.status(200).end();
+
+  try {
+    const poll = await redis.get(`poll:${ts}`);
+
+    if (!poll) return;
+
+    if (poll.votes && poll.votes[userId]) {
+      await fetch(responseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          response_type: "ephemeral",
+          replace_original: false,
+          text: "⚠️ Você já votou!",
+        }),
+      });
+      return;
+    }
+
+    poll.votes[userId] = vote;
+    await redis.set(`poll:${ts}`, poll);
+
+    await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
       },
       body: JSON.stringify({
-        channel,
-        blocks: [
-          {
-            type: "section",
-            text: { type: "mrkdwn", text: `*${question}*` },
-          },
-          {
-            type: "actions",
-            elements: options.map((opt) => ({
-              type: "button",
-              text: { type: "plain_text", text: opt },
-              action_id: `vote_${opt}`,
-              value: opt,
-            })),
-          },
-        ],
+        channel: channelId,
+        thread_ts: ts,
+        text: `<@${userId}> respondeu *${vote}*`,
       }),
     });
 
-    const data = await response.json();
-    const ts = data.ts;
-
-    await redis.set(`poll:${ts}`, { question, options, votes: {} });
+  } catch (err) {
+    console.error(err);
   }
-
-  res.status(200).json({ ok: true });
 }
