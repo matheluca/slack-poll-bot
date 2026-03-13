@@ -28,6 +28,23 @@ export default async function handler(req, res) {
     return res.status(200).json({ challenge: body.challenge });
   }
 
+  // Interação de botão no DM
+  if (body.type === "block_actions") {
+    const action = body.actions?.[0];
+    const userId = body.user?.id;
+    const dmChannel = body.channel?.id;
+
+    if (action?.block_id === "channel_select") {
+      const selected = CHANNEL_OPTIONS.find(c => c.id === action.value);
+      if (selected && conversations[userId]) {
+        conversations[userId] = { ...conversations[userId], step: "ask_type", channelOption: selected };
+        await sendDM(dmChannel, `Canal selecionado: *${selected.label}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
+      }
+    }
+
+    return res.status(200).end();
+  }
+
   const event = body.event;
   if (!event || event.type !== "message" || event.bot_id || event.subtype) {
     return res.status(200).end();
@@ -46,46 +63,34 @@ export default async function handler(req, res) {
   // PASSO 1 — recebe a pergunta
   if (state.step === "idle") {
     conversations[userId] = { step: "ask_channel", question: text };
-    const optionsList = CHANNEL_OPTIONS.map((c, i) => `*${i + 1}*. ${c.label}`).join("\n");
-    await sendDM(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nPara qual canal deseja enviar?\n${optionsList}\n\nResponda com o número.`);
+    await sendDMWithButtons(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nPara qual canal deseja enviar?`, CHANNEL_OPTIONS.map(c => ({ label: c.label, value: c.id })), "channel_select");
     return res.status(200).end();
   }
 
-  // PASSO 2 — escolhe o canal
-  if (state.step === "ask_channel") {
-    const index = parseInt(text) - 1;
-    if (isNaN(index) || index < 0 || index >= CHANNEL_OPTIONS.length) {
-      const optionsList = CHANNEL_OPTIONS.map((c, i) => `*${i + 1}*. ${c.label}`).join("\n");
-      await sendDM(dmChannel, `Por favor responda com um número de 1 a ${CHANNEL_OPTIONS.length}.\n${optionsList}`);
-      return res.status(200).end();
-    }
-    const selected = CHANNEL_OPTIONS[index];
-    conversations[userId] = { ...state, step: "ask_type", channelOption: selected };
-    await sendDM(dmChannel, `Canal selecionado: *${selected.label}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
-    return res.status(200).end();
-  }
-
-  // PASSO 3 — escolhe o tipo
+  // PASSO 2 — escolhe o tipo
   if (state.step === "ask_type") {
     if (text.toLowerCase() === "simples") {
-      await publish(state.question, null, state.channelOption, dmChannel);
+      await publish(state.question, null, state.channelOption);
       await sendDM(dmChannel, "✅ Mensagem enviada!");
       conversations[userId] = { step: "idle" };
       return res.status(200).end();
     }
     if (text.toLowerCase() === "botões" || text.toLowerCase() === "botoes") {
       conversations[userId] = { ...state, step: "ask_options" };
-      await sendDM(dmChannel, "Mande as opções separadas por vírgula.\nEx: 😄 Sim, 😐 Não, 😞 Talvez");
+      await sendDM(dmChannel, "Mande as opções separadas por *;*\nEx: 😄 Sim; 😐 Não; 😞 Talvez");
       return res.status(200).end();
     }
-    await sendDM(dmChannel, "Por favor responda *botões* ou *simples*.");
+    await sendDMWithButtons(dmChannel, "Com botões ou mensagem simples?", [
+      { label: "Botões", value: "botoes" },
+      { label: "Simples", value: "simples" },
+    ], "type_select");
     return res.status(200).end();
   }
 
-  // PASSO 4 — recebe as opções
+  // PASSO 3 — recebe as opções
   if (state.step === "ask_options") {
-    const options = text.split(",").map((o) => o.trim());
-    await publish(state.question, options, state.channelOption, dmChannel);
+    const options = text.split(";").map((o) => o.trim());
+    await publish(state.question, options, state.channelOption);
     await sendDM(dmChannel, "✅ Enquete enviada!");
     conversations[userId] = { step: "idle" };
     return res.status(200).end();
@@ -94,14 +99,59 @@ export default async function handler(req, res) {
   return res.status(200).end();
 }
 
-async function publish(question, options, channelOption, dmChannel) {
+async function sendDMWithButtons(channel, text, options, blockId) {
+  const response = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+    },
+    body: JSON.stringify({
+      channel,
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text },
+        },
+        {
+          type: "actions",
+          block_id: blockId,
+          elements: options.map((opt) => ({
+            type: "button",
+            text: { type: "plain_text", text: opt.label },
+            value: opt.value,
+            action_id: `${blockId}_${opt.value}`,
+          })),
+        },
+      ],
+    }),
+  });
+  const data = await response.json();
+  console.log("SEND DM WITH BUTTONS:", JSON.stringify(data));
+  return data;
+}
+
+async function sendDM(channel, text) {
+  const response = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+    },
+    body: JSON.stringify({ channel, text }),
+  });
+  const data = await response.json();
+  console.log("SEND DM RESPONSE:", JSON.stringify(data));
+  return data;
+}
+
+async function publish(question, options, channelOption) {
   const { Redis } = await import("@upstash/redis");
   const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
   });
 
-  // Define os canais de destino
   let targetChannels = [];
   if (channelOption.id === "mix") {
     targetChannels = ["C06BR6JNTD5", "C06C63PCX6W", "C06C3C1RGQ5"];
@@ -109,12 +159,9 @@ async function publish(question, options, channelOption, dmChannel) {
     targetChannels = [channelOption.id];
   }
 
-  // Sempre inclui o canal de teste
   const allChannels = [...new Set([CHANNEL_TEST, ...targetChannels])];
 
   for (const channel of allChannels) {
-    // Descobre o nome do canal para mencionar
-    const channelName = CHANNEL_OPTIONS.find(c => c.id === channel)?.label || "canal";
     const messageText = `<!here> *${question}*`;
 
     const body = options
@@ -154,18 +201,4 @@ async function publish(question, options, channelOption, dmChannel) {
       await redis.set(`poll:${data.ts}`, { question, options, votes: {} });
     }
   }
-}
-
-async function sendDM(channel, text) {
-  const response = await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-    },
-    body: JSON.stringify({ channel, text }),
-  });
-  const data = await response.json();
-  console.log("SEND DM RESPONSE:", JSON.stringify(data));
-  return data;
 }
