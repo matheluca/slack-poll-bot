@@ -1,3 +1,10 @@
+import { Redis } from "@upstash/redis";
+
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
 const AUTHORIZED_USERS = [
   "U03DBNN8AMP",
   "U04AANJD124",
@@ -15,8 +22,6 @@ const CHANNEL_OPTIONS = [
   { label: "Geral", id: "C03D68VC2GK" },
   { label: "teste", id: "C0ALDQ09TPW" },
 ];
-
-const conversations = {};
 
 export const config = {
   maxDuration: 30,
@@ -42,11 +47,11 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const state = conversations[userId] || { step: "idle" };
+  const state = (await redis.get(`conv:${userId}`)) || { step: "idle" };
 
   // PASSO 1 — recebe a pergunta
   if (state.step === "idle") {
-    conversations[userId] = { step: "ask_channel", question: text };
+    await redis.set(`conv:${userId}`, { step: "ask_channel", question: text });
     const optionsList = CHANNEL_OPTIONS.map((c, i) => `*${i + 1}*. ${c.label}`).join("\n");
     await sendDM(dmChannel, `✅ Pergunta recebida:\n*${text}*\n\nPara qual canal deseja enviar?\n${optionsList}\n\nResponda com o número.`);
     return res.status(200).end();
@@ -61,7 +66,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
     const selected = CHANNEL_OPTIONS[index];
-    conversations[userId] = { ...state, step: "ask_type", channelOption: selected };
+    await redis.set(`conv:${userId}`, { ...state, step: "ask_type", channelOption: selected });
     await sendDM(dmChannel, `Canal selecionado: *${selected.label}*\n\nCom botões ou mensagem simples?\nResponda: *botões* ou *simples*`);
     return res.status(200).end();
   }
@@ -71,11 +76,11 @@ export default async function handler(req, res) {
     if (text.toLowerCase() === "simples") {
       await publish(state.question, null, state.channelOption);
       await sendDM(dmChannel, "✅ Mensagem enviada!");
-      conversations[userId] = { step: "idle" };
+      await redis.del(`conv:${userId}`);
       return res.status(200).end();
     }
     if (text.toLowerCase() === "botões" || text.toLowerCase() === "botoes") {
-      conversations[userId] = { ...state, step: "ask_options" };
+      await redis.set(`conv:${userId}`, { ...state, step: "ask_options" });
       await sendDM(dmChannel, "Mande as opções separadas por *;*\nEx: 😄 Sim!; 😐 Ainda não!; 😞 Esqueci");
       return res.status(200).end();
     }
@@ -88,7 +93,7 @@ export default async function handler(req, res) {
     const options = text.split(";").map((o) => o.trim());
     await publish(state.question, options, state.channelOption);
     await sendDM(dmChannel, "✅ Enquete enviada!");
-    conversations[userId] = { step: "idle" };
+    await redis.del(`conv:${userId}`);
     return res.status(200).end();
   }
 
@@ -96,12 +101,6 @@ export default async function handler(req, res) {
 }
 
 async function publish(question, options, channelOption) {
-  const { Redis } = await import("@upstash/redis");
-  const redis = new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
-
   let targetChannels = [];
   if (channelOption.id === "mix") {
     targetChannels = ["C06BR6JNTD5", "C06C63PCX6W", "C06C3C1RGQ5"];
@@ -118,10 +117,7 @@ async function publish(question, options, channelOption) {
       ? {
           channel,
           blocks: [
-            {
-              type: "section",
-              text: { type: "mrkdwn", text: messageText },
-            },
+            { type: "section", text: { type: "mrkdwn", text: messageText } },
             {
               type: "actions",
               elements: options.map((opt) => ({
