@@ -22,6 +22,7 @@ export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
   const params = new URLSearchParams(rawBody);
   const payload = JSON.parse(params.get("payload"));
+
   const userId = payload.user.id;
   const action = payload.actions[0];
   const vote = action.value;
@@ -29,13 +30,10 @@ export default async function handler(req, res) {
   const channelId = payload.channel.id;
   const responseUrl = payload.response_url;
 
-  res.status(200).end();
-
   try {
     const poll = await redis.get(`poll:${ts}`);
-
     if (!poll) {
-      console.log("POLL NOT FOUND para ts:", ts);
+      res.status(200).end();
       return;
     }
 
@@ -49,13 +47,14 @@ export default async function handler(req, res) {
           text: "⚠️ Você já votou!",
         }),
       });
+      res.status(200).end();
       return;
     }
 
     poll.votes[userId] = vote;
     await redis.set(`poll:${ts}`, poll);
 
-    const slackRes = await fetch("https://slack.com/api/chat.postMessage", {
+    await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -68,10 +67,9 @@ export default async function handler(req, res) {
       }),
     });
 
-    const slackData = await slackRes.json();
-    console.log("SLACK RESPONSE:", JSON.stringify(slackData));
-
+    res.status(200).end();
   } catch (err) {
-    console.error("ERRO:", err);
+    console.error(err);
+    res.status(200).end();
   }
 }
