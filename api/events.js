@@ -91,6 +91,13 @@ export default async function handler(req, res) {
 
   const state = conversations[userId] || { step: "idle" };
 
+  // CANCELAR — funciona em qualquer etapa
+  if (text.toLowerCase() === "cancelar" && state.step !== "idle") {
+    conversations[userId] = { step: "idle" };
+    await sendDM(dmChannel, "❌ Enquete cancelada. Mande uma nova pergunta quando quiser.");
+    return res.status(200).end();
+  }
+
   // PASSO 1 — recebe a pergunta
   if (state.step === "idle") {
     conversations[userId] = { step: "ask_channel", question: text };
