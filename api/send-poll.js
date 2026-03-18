@@ -5,14 +5,24 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-const CHANNELS = ["C0ALDQ09TPW", "C06BR6JNTD5", "C06C63PCX6W", "C06C3C1RGQ5"];
-
 export default async function handler(req, res) {
-  const question = "Você já atualizou as OPs do seu funil para evitar irregularidade?";
-  const options = ["😄 Sim!", "😐 Ainda não!", "😞 Ed, estava esquecendo. Obrigado!"];
+  const question = process.env.SEND_POLL_QUESTION || "Você já atualizou as OPs do seu funil para evitar irregularidade?";
+  const options = (process.env.SEND_POLL_OPTIONS || "😄 Sim!;😐 Ainda não!;😞 Ed, estava esquecendo. Obrigado!")
+    .split(";")
+    .map((o) => o.trim());
+
+  const channels = (process.env.SEND_POLL_CHANNELS || "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+
+  if (channels.length === 0) {
+    return res.status(500).json({ error: "SEND_POLL_CHANNELS not configured" });
+  }
+
   const results = [];
 
-  for (const channel of CHANNELS) {
+  for (const channel of channels) {
     const response = await fetch("https://slack.com/api/chat.postMessage", {
       method: "POST",
       headers: {
@@ -40,7 +50,6 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    console.log(`Canal ${channel}:`, JSON.stringify(data));
     results.push({ channel, ok: data.ok, error: data.error });
 
     if (data.ts) {

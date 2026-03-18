@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import crypto from "crypto";
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -18,17 +19,54 @@ async function getRawBody(req) {
   });
 }
 
+function verifySlackSignature(req, rawBody) {
+  const signingSecret = process.env.SLACK_SIGNING_SECRET;
+  const timestamp = req.headers["x-slack-request-timestamp"];
+  const slackSignature = req.headers["x-slack-signature"];
+
+  if (!signingSecret || !timestamp || !slackSignature) return false;
+  if (Math.abs(Date.now() / 1000 - parseInt(timestamp)) > 300) return false;
+
+  const sigBase = `v0:${timestamp}:${rawBody}`;
+  const mySignature =
+    "v0=" +
+    crypto.createHmac("sha256", signingSecret).update(sigBase).digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(mySignature),
+      Buffer.from(slackSignature)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req, res) {
   const rawBody = await getRawBody(req);
-  const params = new URLSearchParams(rawBody);
-  const payload = JSON.parse(params.get("payload"));
 
-  const userId = payload.user.id;
-  const action = payload.actions[0];
-  const vote = action.value;
-  const ts = payload.message.ts;
-  const channelId = payload.channel.id;
+  if (!verifySlackSignature(req, rawBody)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  let payload;
+  try {
+    const params = new URLSearchParams(rawBody);
+    payload = JSON.parse(params.get("payload"));
+  } catch {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+
+  const userId = payload.user?.id;
+  const action = payload.actions?.[0];
+  const vote = action?.value;
+  const ts = payload.message?.ts;
+  const channelId = payload.channel?.id;
   const responseUrl = payload.response_url;
+
+  if (!userId || !vote || !ts || !channelId) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
   try {
     const poll = await redis.get(`poll:${ts}`);
